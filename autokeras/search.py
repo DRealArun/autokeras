@@ -1,4 +1,5 @@
 import os
+import re
 import time
 
 import torch
@@ -7,7 +8,8 @@ from autokeras.constant import Constant
 from autokeras.bayesian import edit_distance, BayesianOptimizer
 from autokeras.generator import CnnGenerator
 from autokeras.net_transformer import default_transform
-from autokeras.utils import ModelTrainer, pickle_to_file, pickle_from_file
+from autokeras.utils import pickle_to_file, pickle_from_file, verbose_print
+from autokeras.model_trainer import ModelTrainer
 
 import torch.multiprocessing as mp
 
@@ -127,7 +129,9 @@ class Searcher:
             line = '|'.join(x.center(24) for x in header)
             print('+' + '-' * len(line) + '+')
             print('|' + line + '|')
-            for i, r in enumerate(self.history):
+
+            if self.history:
+                r = self.history[-1]
                 print('+' + '-' * len(line) + '+')
                 line = '|'.join(str(r[x]).center(24) for x in idx)
                 print('|' + line + '|')
@@ -167,63 +171,63 @@ class Searcher:
         graph, father_id, model_id = self.training_queue.pop(0)
         if self.verbose:
             print('\n')
-            print('╒' + '=' * 46 + '╕')
+            print('+' + '-' * 46 + '+')
             print('|' + 'Training model {}'.format(model_id).center(46) + '|')
-            print('╘' + '=' * 46 + '╛')
+            print('+' + '-' * 46 + '+')
         mp.set_start_method('spawn', force=True)
         pool = mp.Pool(1)
-        train_results = pool.map_async(train, [(graph, train_data, test_data, self.trainer_args,
-                                                os.path.join(self.path, str(model_id) + '.png'),
-                                                self.metric, self.loss, self.verbose)])
-
-        # Do the search in current thread.
         try:
+            train_results = pool.map_async(train, [(graph, train_data, test_data, self.trainer_args,
+                                                    os.path.join(self.path, str(model_id) + '.png'),
+                                                    self.metric, self.loss, self.verbose)])
+
+            # Do the search in current thread.
+            searched = False
+            new_graph = None
+            new_father_id = None
             if not self.training_queue:
-                new_graph, new_father_id = self.bo.optimize_acq(self.search_tree.adj_list.keys(),
-                                                                self.descriptors,
-                                                                timeout)
-                # Did not found a new architecture
-                if new_father_id is None:
-                    return
+                searched = True
+
+                while new_father_id is None:
+                    remaining_time = timeout - (time.time() - start_time)
+                    new_graph, new_father_id = self.bo.optimize_acq(self.search_tree.adj_list.keys(),
+                                                                    self.descriptors,
+                                                                    remaining_time)
                 new_model_id = self.model_count
                 self.model_count += 1
                 self.training_queue.append((new_graph, new_father_id, new_model_id))
                 self.descriptors.append(new_graph.extract_descriptor())
 
-                if self.verbose:
-                    cell_size = [24, 49]
-                    header = ['Father Model ID', 'Added Operation']
-                    line = '|'.join(str(x).center(cell_size[i]) for i, x in enumerate(header))
-                    print('\n' + '+' + '-' * len(line) + '+')
-                    print('|' + line + '|')
-                    print('+' + '-' * len(line) + '+')
-                    for i in range(len(new_graph.operation_history)):
-                        if i == len(new_graph.operation_history)//2:
-                            r = [new_father_id, new_graph.operation_history[i]]
-                        else:
-                            r = [' ', new_graph.operation_history[i]]
-                        line = '|'.join(str(x).center(cell_size[i]) for i, x in enumerate(r))
-                        print('|' + line + '|')
-                    print('+' + '-' * len(line) + '+')
             remaining_time = timeout - (time.time() - start_time)
-            if remaining_time > 0:
-                metric_value, loss, graph = train_results.get(timeout=remaining_time)[0]
-            else:
+            if remaining_time <= 0:
                 raise TimeoutError
+            metric_value, loss, graph = train_results.get(timeout=remaining_time)[0]
+
+            if self.verbose and searched:
+                verbose_print(new_father_id, new_graph)
+
+            self.add_model(metric_value, loss, graph, model_id)
+            self.search_tree.add_child(father_id, model_id)
+            self.bo.fit(self.x_queue, self.y_queue)
+            self.x_queue = []
+            self.y_queue = []
+
+            pickle_to_file(self, os.path.join(self.path, 'searcher'))
+            self.export_json(os.path.join(self.path, 'history.json'))
+
         except (mp.TimeoutError, TimeoutError) as e:
             raise TimeoutError from e
+        except RuntimeError as e:
+            if not re.search('out of memory', str(e)):
+                raise e
+            if self.verbose:
+                print('\nCurrent model size is too big. Discontinuing training this model to search for other models.')
+            Constant.MAX_MODEL_SIZE = graph.size() - 1
+            return
         finally:
             # terminate and join the subprocess to prevent any resource leak
             pool.close()
             pool.join()
-        self.add_model(metric_value, loss, graph, model_id)
-        self.search_tree.add_child(father_id, model_id)
-        self.bo.fit(self.x_queue, self.y_queue)
-        self.x_queue = []
-        self.y_queue = []
-
-        pickle_to_file(self, os.path.join(self.path, 'searcher'))
-        self.export_json(os.path.join(self.path, 'history.json'))
 
     def export_json(self, path):
         data = dict()
@@ -272,14 +276,14 @@ def train(args):
     model = graph.produce_model()
     # if path is not None:
     #     plot_model(model, to_file=path, show_shapes=True)
-    loss, mertic_value = ModelTrainer(model,
-                                      train_data,
-                                      test_data,
-                                      metric,
-                                      loss,
-                                      verbose).train_model(**trainer_args)
+    loss, metric_value = ModelTrainer(model=model,
+                                      train_data=train_data,
+                                      test_data=test_data,
+                                      metric=metric,
+                                      loss_function=loss,
+                                      verbose=verbose).train_model(**trainer_args)
     model.set_weight_to_graph()
-    return mertic_value, loss, model.graph
+    return metric_value, loss, model.graph
 
 
 def same_graph(des1, des2):

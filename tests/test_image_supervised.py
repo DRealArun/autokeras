@@ -82,7 +82,7 @@ def test_timeout_resume(_):
     clean_dir(path)
     clf = ImageClassifier(path=path, verbose=False, resume=False)
     clf.n_epochs = 100
-    clf.fit(train_x, train_y, 15)
+    clf.fit(train_x, train_y, 5)
     history_len = len(clf.load_searcher().history)
     assert history_len != 0
     results = clf.predict(test_x)
@@ -234,4 +234,28 @@ def test_export_keras_model(_):
     assert len(results) == len(test_x)
     score = model.evaluate(train_x, train_y)
     assert score <= 1.0
+    clean_dir(path)
+
+    clf = ImageRegressor(path=path, verbose=False, resume=False)
+    clf.n_epochs = 100
+    clf.fit(train_x, train_y)
+    score = clf.evaluate(train_x, train_y)
+    assert score >= 0.0
+
+    model_file_name = os.path.join(path, 'test_keras_model.h5')
+    clf.export_keras_model(model_file_name)
+    from keras.models import load_model
+    model = load_model(model_file_name)
+    results = model.predict(test_x)
+    assert len(results) == len(test_x)
+    del model, results, model_file_name
+
+    model_file_name = os.path.join(path, 'test_autokeras_model.pkl')
+    clf.export_autokeras_model(model_file_name)
+    from autokeras.utils import pickle_from_file
+    model = pickle_from_file(model_file_name)
+    results = model.predict(test_x)
+    assert len(results) == len(test_x)
+    score = model.evaluate(train_x, train_y)
+    assert score >= 0.0
     clean_dir(path)
