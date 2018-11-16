@@ -20,6 +20,7 @@ class Constant:
     DENSE_BLOCK_DISTANCE = 1
     MODEL_LEN = 3
     MODEL_WIDTH = 64
+    MAX_NUM_LAYERS = 8
 
     # ModelTrainer
 

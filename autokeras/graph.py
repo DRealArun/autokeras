@@ -97,6 +97,7 @@ class Graph:
 
         self.vis = None
         self._add_node(Node(input_shape))
+        self._layer_count = 0
 
     def add_layer(self, layer, input_node_id):
         if isinstance(input_node_id, list):
@@ -394,12 +395,14 @@ class Graph:
             skip_output_id = self.add_layer(deepcopy(self.layer_list[layer_id]), skip_output_id)
 
         # Add the conv layer
-        new_relu_layer = StubReLU()
-        skip_output_id = self.add_layer(new_relu_layer, skip_output_id)
+        # new_relu_layer = StubReLU()
+        # skip_output_id = self.add_layer(new_relu_layer, skip_output_id)
         new_conv_layer = StubConv(self.layer_list[start_id].filters, self.layer_list[end_id].filters, 1)
         skip_output_id = self.add_layer(new_conv_layer, skip_output_id)
         new_bn_layer = StubBatchNormalization(self.layer_list[end_id].filters)
         skip_output_id = self.add_layer(new_bn_layer, skip_output_id)
+        new_relu_layer = StubReLU()
+        skip_output_id = self.add_layer(new_relu_layer, skip_output_id)
 
         # Add the add layer.
         block_last_layer_output_id = self.adj_list[block_last_layer_input_id][0][0]
@@ -461,17 +464,19 @@ class Graph:
         self.node_list[concat_output_node_id].shape = concat_layer.output_shape
 
         # Add the concatenate layer.
-        new_relu_layer = StubReLU()
-        concat_output_node_id = self.add_layer(new_relu_layer, concat_output_node_id)
+        # new_relu_layer = StubReLU()
+        # concat_output_node_id = self.add_layer(new_relu_layer, concat_output_node_id)
         new_conv_layer = StubConv(self.layer_list[start_id].filters + self.layer_list[end_id].filters,
                                   self.layer_list[end_id].filters, 1)
         concat_output_node_id = self.add_layer(new_conv_layer, concat_output_node_id)
         new_bn_layer = StubBatchNormalization(self.layer_list[end_id].filters)
+        concat_output_node_id = self.add_layer(new_bn_layer, concat_output_node_id)
 
-        self._add_edge(new_bn_layer, concat_output_node_id, block_last_layer_output_id)
-        new_bn_layer.input = self.node_list[concat_output_node_id]
-        new_bn_layer.output = self.node_list[block_last_layer_output_id]
-        self.node_list[block_last_layer_output_id].shape = new_bn_layer.output_shape
+        new_relu_layer = StubReLU()
+        self._add_edge(new_relu_layer, concat_output_node_id, block_last_layer_output_id)
+        new_relu_layer.input = self.node_list[concat_output_node_id]
+        new_relu_layer.output = self.node_list[block_last_layer_output_id]
+        self.node_list[block_last_layer_output_id].shape = new_relu_layer.output_shape
 
         if self.weighted:
             filters_end = self.layer_list[end_id].filters

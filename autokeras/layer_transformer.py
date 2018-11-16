@@ -27,9 +27,9 @@ def deeper_conv_block(conv_layer, kernel_size, weighted=True):
                        add_noise(np.ones(n_filters, dtype=np.float32), np.array([0, 1]))]
         bn.set_weights(new_weights)
 
-    return [StubReLU(),
-            new_conv_layer,
-            bn]
+    return [new_conv_layer,
+            bn,
+            StubReLU()]
 
 
 def dense_to_deeper_block(dense_layer, weighted=True):

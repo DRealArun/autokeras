@@ -18,13 +18,16 @@ class CnnGenerator:
         graph = Graph(self.input_shape, False)
         temp_input_channel = self.input_shape[-1]
         output_node_id = 0
+        block_layer_count = 0
         for i in range(model_len):
-            output_node_id = graph.add_layer(StubReLU(), output_node_id)
             output_node_id = graph.add_layer(StubConv(temp_input_channel, model_width, kernel_size=3), output_node_id)
             output_node_id = graph.add_layer(StubBatchNormalization(model_width), output_node_id)
+            output_node_id = graph.add_layer(StubReLU(), output_node_id)
+            block_layer_count +=1
             temp_input_channel = model_width
             if pooling_len == 0 or ((i + 1) % pooling_len == 0 and i != model_len - 1):
                 output_node_id = graph.add_layer(StubPooling(), output_node_id)
+                block_layer_count +=1
 
         output_node_id = graph.add_layer(StubFlatten(), output_node_id)
         output_node_id = graph.add_layer(StubDropout(Constant.CONV_DROPOUT_RATE), output_node_id)
@@ -32,4 +35,6 @@ class CnnGenerator:
                                          output_node_id)
         output_node_id = graph.add_layer(StubReLU(), output_node_id)
         graph.add_layer(StubDense(model_width, self.n_output_node), output_node_id)
+        graph._layer_count = block_layer_count
+        print("Generated CNN has ",graph._layer_count," layers")
         return graph

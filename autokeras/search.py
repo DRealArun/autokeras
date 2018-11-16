@@ -158,6 +158,7 @@ class Searcher:
             self.model_count += 1
             self.training_queue.append((child_graph, model_id, child_id))
             self.descriptors.append(child_graph.extract_descriptor())
+            print('\nChild', child_id , ' block layer size ', child_graph._layer_count)
         if self.verbose:
             print('Initialization finished.')
 
@@ -205,6 +206,7 @@ class Searcher:
 
             if self.verbose and searched:
                 verbose_print(new_father_id, new_graph)
+                print("New Model ", new_father_id, " block layer size ", new_graph._layer_count)
 
             self.add_model(metric_value, loss, graph, model_id)
             self.search_tree.add_child(father_id, model_id)

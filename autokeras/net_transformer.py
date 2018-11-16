@@ -16,10 +16,11 @@ def to_wider_graph(graph):
         layer = graph.layer_list[layer_id]
         if is_layer(layer, 'Conv'):
             n_add = layer.filters
-        else:
-            n_add = layer.units
+            graph.to_wider_model(layer_id, n_add)
+        # else:
+        #     n_add = layer.units
 
-        graph.to_wider_model(layer_id, n_add)
+        #graph.to_wider_model(layer_id, n_add)
     return graph
 
 
@@ -60,9 +61,10 @@ def to_deeper_graph(graph):
     for layer_id in deeper_layer_ids:
         layer = graph.layer_list[layer_id]
         if is_layer(layer, 'Conv'):
-            graph.to_conv_deeper_model(layer_id, 3)
-        else:
-            graph.to_dense_deeper_model(layer_id)
+            kernel_size = randrange(3,8,2)
+            graph.to_conv_deeper_model(layer_id, kernel_size)
+        # else:
+        #     graph.to_dense_deeper_model(layer_id)
     return graph
 
 
@@ -81,12 +83,12 @@ def transform(graph):
         temp_graph = None
         if a == 0:
             temp_graph = to_deeper_graph(deepcopy(graph))
+            temp_graph._layer_count +=1
         elif a == 1:
             temp_graph = to_wider_graph(deepcopy(graph))
         elif a == 2:
             temp_graph = to_skip_connection_graph(deepcopy(graph))
-
-        if temp_graph is not None and temp_graph.size() <= Constant.MAX_MODEL_SIZE:
+        if temp_graph is not None and temp_graph.size() <= Constant.MAX_MODEL_SIZE and temp_graph._layer_count <= Constant.MAX_NUM_LAYERS:
             graphs.append(temp_graph)
 
         if len(graphs) >= Constant.N_NEIGHBOURS:
@@ -98,10 +100,14 @@ def transform(graph):
 def default_transform(graph):
     graph = deepcopy(graph)
     graph.to_conv_deeper_model(1, 3)
+    graph._layer_count +=1
     graph.to_conv_deeper_model(1, 3)
+    graph._layer_count +=1
     graph.to_conv_deeper_model(5, 3)
+    graph._layer_count +=1
     graph.to_conv_deeper_model(9, 3)
-    graph.to_add_skip_model(1, 18)
+    graph._layer_count +=1
+    graph.to_add_skip_model(1, 18) 
     graph.to_add_skip_model(18, 24)
     graph.to_add_skip_model(24, 27)
     return [graph]
